@@ -62,7 +62,8 @@ if [[ ! -f $dest/Soulframe.x64.exe ]]; then
   while [[ ! -f $src/Soulframe.x64.exe ]]; do
     read -rp "Soulframe install folder (the one with Soulframe.x64.exe): " src
   done
-  ! pgrep -i '^(Soulframe|Launcher)' >/dev/null || { echo "Close Soulframe and its launcher first."; exit 1; }
+  # The game's exe and DE's launcher by path, not "Soulframe*": that also matches SoulframePrivateServer (the GUI).
+  ! pgrep -if 'soulframe\.x64\.exe|soulframe.*launcher\.exe' >/dev/null || { echo "Close Soulframe and its launcher first."; exit 1; }
   [[ $(sha256sum "$src/Soulframe.x64.exe" | cut -d' ' -f1) == "$P16H6" ]] ||
     { echo "Your Soulframe is a different version than this server supports (P16H6, 2026.10.08). Nothing was changed."; exit 1; }
   echo "Copying $src to $dest (about 13 GB, read-only on your real install)..."

@@ -34,7 +34,10 @@ if (-not (Test-Path -LiteralPath "$Dest\Soulframe.x64.exe")) {
     while (-not (Test-Path -LiteralPath "$Source\Soulframe.x64.exe")) {
         $Source = (Read-Host "Soulframe install folder (the one with Soulframe.x64.exe)").Trim('"')
     }
-    if (Get-Process -Name 'Soulframe*', 'Launcher' -ErrorAction SilentlyContinue) { throw 'Close Soulframe and its launcher first.' }
+    # Not 'Soulframe*': that also matches SoulframePrivateServer.exe (the GUI that started this setup).
+    if (Get-Process -Name 'Soulframe.x64', 'Launcher' -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'Launcher' -or $_.Path -match '\\Soulframe\\' }) {
+        throw 'Close Soulframe and its launcher first.'
+    }
     if ((Get-FileHash -LiteralPath "$Source\Soulframe.x64.exe").Hash.ToLower() -ne $P16H6) {
         throw 'Your Soulframe is a different version than this server supports (P16H6, 2026.10.08). Nothing was changed.'
     }
