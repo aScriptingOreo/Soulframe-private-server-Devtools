@@ -44,8 +44,9 @@ def unpack():
     for d in 'tools', 'fixtures', 'gamedata', 'join', 'dev', 'bootstrap':  # dev + bootstrap/src/imgui.rs: devlua.py
         if (BUNDLE / d).exists():
             shutil.copytree(BUNDLE / d, DATA / d, dirs_exist_ok=True)
-    for sh in JOIN.glob('*.sh'):
-        sh.chmod(0o755)
+    for x in [*JOIN.glob('*.sh'), DATA / 'tools/luau/luau-compile']:
+        if x.exists():
+            x.chmod(0o755)
 
 
 def run_script(name, args):
@@ -57,7 +58,7 @@ def run_script(name, args):
     runpy.run_path(sys.argv[0], run_name='__main__')
 
 
-MODES = {'--server': 'dummy_server.py', '--devgui': 'devgui.pyw'}
+MODES = {'--server': 'dummy_server.py', '--devgui': 'devgui.pyw', '--devlua': 'devlua.py'}
 
 
 def script(mode, *args):
@@ -125,6 +126,8 @@ class App(tk.Tk):
         if WINDOWS:  # devgui.pyw drives the game window through user32; in game, F9 has the same panel
             ttk.Checkbutton(bar, text='Dev tools', variable=self.dev,
                             command=lambda: self.dev.get() and self.open_devgui()).pack(side='left', padx=6)
+        else:  # no devgui on Linux: compile dev.lua into the copy once, and the F9 panel has the same buttons
+            ttk.Button(bar, text='Load dev panel (F9)', command=self.load_dev_panel).pack(side='left', padx=6)
 
         self.log = tk.Text(self, height=16, state='disabled', wrap='none', font=('Consolas' if WINDOWS else 'monospace', 9))
         self.log.pack(fill='both', expand=True, padx=8, pady=8)
@@ -165,6 +168,11 @@ class App(tk.Tk):
         if not (self.devgui and self.devgui.poll() is None):  # SF_COPY: where devlua.py writes dev.luac
             self.devgui = subprocess.Popen(script('--devgui'), cwd=DATA / 'tools', creationflags=NO_WINDOW,
                                            env={**ENV, 'SF_COPY': str(self.copy_dir())})
+
+    def load_dev_panel(self):
+        self.say('dev: compiling dev.lua into the copy; the game runs it once it is in the world and focused, then press F9')
+        self.stream(subprocess.Popen(script('--devlua'), cwd=DATA / 'tools', stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                     stdin=subprocess.DEVNULL, text=True, env={**ENV, 'SF_COPY': str(self.copy_dir())}), 'dev: ')
 
     def browse_copy(self):
         picked = filedialog.askdirectory(title='Where to put the private copy', initialdir=self.copy_dir().parent)

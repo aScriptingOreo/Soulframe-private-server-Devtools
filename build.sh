@@ -13,6 +13,16 @@ export PATH=$b/venv/bin:~/.cargo/bin:$PATH
 rustup toolchain install stable --profile minimal --target x86_64-pc-windows-gnu
 cargo +stable zigbuild --release --target x86_64-pc-windows-gnu --manifest-path "$root/bootstrap/Cargo.toml"
 
+# luau-compile 0.712 for the dev panel (devlua.py), Linux build of the same release tools/setup.ps1 pins for Windows.
+luau=$root/tools/luau
+if [[ ! -x $luau/luau-compile ]]; then
+  mkdir -p "$b" "$luau"
+  curl -fL --retry 3 -o "$b/luau-ubuntu.zip" https://github.com/luau-lang/luau/releases/download/0.712/luau-ubuntu.zip
+  echo "e792aaac235555b4e826e7f849c8ac6dd977bb3ff2f6013912bf29c06b6e4ef4  $b/luau-ubuntu.zip" | sha256sum -c --quiet
+  python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extract("luau-compile", sys.argv[2])' "$b/luau-ubuntu.zip" "$luau"
+  chmod +x "$luau/luau-compile"
+fi
+
 # What release/join/setup.sh expects next to it (as in the sf-join package; no sf-server.txt = this PC).
 rm -rf "$b/join" "$b/AppDir"
 mkdir -p "$b/join"
@@ -20,7 +30,8 @@ cp "$root"/release/join/* "$root"/bootstrap/target/x86_64-pc-windows-gnu/release
 
 pyinstaller --noconfirm --onedir --name sf-server --collect-submodules cryptography \
   --distpath "$b/AppDir/usr/bin" --workpath "$b/pyi" --specpath "$b" \
-  --add-data "$root/tools/*.py:tools" --add-data "$root/fixtures:fixtures" --add-data "$root/gamedata:gamedata" --add-data "$b/join:join" \
+  --add-data "$root/tools/*.py:tools" --add-data "$luau:tools/luau" --add-data "$root/dev:dev" \
+  --add-data "$root/bootstrap/src/imgui.rs:bootstrap/src" --add-data "$root/fixtures:fixtures" --add-data "$root/gamedata:gamedata" --add-data "$b/join:join" \
   "$root/tools/server_gui.pyw"
 
 cd "$b/AppDir"

@@ -16,7 +16,7 @@ import stock_to_game  # tools/stock_to_game.py
 HERE = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE = os.path.join(HERE, '..', '..', 'soulframe-rust-workspace')
 # tools/luau: the official 0.712 build that setup.ps1 downloads; the workspace's own build of the same tag otherwise.
-COMPILER = next((p for p in (os.path.join(HERE, 'luau', 'luau-compile.exe'),
+COMPILER = next((p for p in (os.path.join(HERE, 'luau', 'luau-compile.exe' if os.name == 'nt' else 'luau-compile'),  # Linux: build.sh
                              os.path.join(WORKSPACE, 'target', 'x', 'b7', 'Release', 'luau-compile.exe')) if os.path.exists(p)),
                 os.path.join(HERE, 'luau', 'luau-compile.exe'))
 TESTER = os.path.join(WORKSPACE, 'target', 'x', 'corpus', 'out', 'SF', 'Scripts', 'Bosses', 'BossFightTester.lua')
