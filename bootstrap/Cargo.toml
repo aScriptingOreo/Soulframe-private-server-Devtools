@@ -8,7 +8,7 @@ description = "Injected into the sandboxed P16H6 copy only: *.soulframe.com -> 1
 crate-type = ["cdylib"]
 
 [dependencies]
-hudhook = { version = "0.9", default-features = false, features = ["dx11"] }
+hudhook = { version = "0.9", default-features = false, features = ["dx11", "dx12"] }
 retour = "0.3"
 
 [profile.release]

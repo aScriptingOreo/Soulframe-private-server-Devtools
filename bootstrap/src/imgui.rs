@@ -1,11 +1,11 @@
 //! The devs' own ImGui panels in the box (findings/0029, 0033). Retail registers every `ImGui*` Luau native as a no-op,
 //! and Dear ImGui isn't linked. We swap the natives the scripts use for ours before the VM registers them: on the game
 //! thread they record each frame's widget calls and answer with what the overlay saw last frame (a click, a new
-//! value, whether a tree node is open). The overlay (hudhook, D3D11 Present) replays the latest recorded frame with
+//! value, whether a tree node is open). The overlay (hudhook, D3D11 or D3D12 Present) replays the latest recorded frame with
 //! real Dear ImGui on the render thread, so the scripts' panels draw unchanged. F9 shows it and takes the mouse and
 //! keyboard: window messages through hudhook's filter, DirectInput (what the game plays with) through our device hooks.
 
-use hudhook::hooks::dx11::ImguiDx11Hooks;
+use hudhook::hooks::{dx11::ImguiDx11Hooks, dx12::ImguiDx12Hooks};
 use hudhook::imgui::{sys, Context, Io, Ui};
 use hudhook::{Hudhook, ImguiRenderLoop, MessageFilter, RenderContext};
 use retour::RawDetour;
@@ -371,8 +371,8 @@ unsafe extern "system" fn hook_clip_cursor(rect: *const c_void) -> i32 {
     original(if VISIBLE.load(Relaxed) { std::ptr::null() } else { rect })
 }
 
-/// Hook Present once the game has loaded D3D11 (when sf-launch picked -graphicsDriver:dx11; under dx12, no overlay). Own thread: hudhook builds a dummy
-/// device to find the vtable, which must not hold up sf-launch's start signal.
+/// Hook Present once the game has loaded D3D11 or D3D12, whichever -graphicsDriver sf-launch picked. Own thread: hudhook
+/// builds a dummy device to find the vtable, which must not hold up sf-launch's start signal.
 pub(crate) fn start_overlay() {
     std::thread::spawn(|| unsafe {
         #[link(name = "kernel32")]
@@ -380,12 +380,16 @@ pub(crate) fn start_overlay() {
             fn GetModuleHandleW(name: *const u16) -> *const u8;
         }
         hook_input(); // before the game sets up its devices, so SetCooperativeLevel is seen
-        let d3d11 = super::wide::<10>("d3d11.dll");
-        while GetModuleHandleW(d3d11.as_ptr()).is_null() {
+        // By the flag, not by which DLL shows up: a D3D12 game (and vkd3d-proton under Proton) may load d3d11.dll too.
+        let dx12 = std::env::args().any(|a| a.eq_ignore_ascii_case("-graphicsDriver:dx12"));
+        let dll = super::wide::<10>(if dx12 { "d3d12.dll" } else { "d3d11.dll" });
+        while GetModuleHandleW(dll.as_ptr()).is_null() {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
-        log("imgui: d3d11.dll loaded, hooking Present");
-        match Hudhook::builder().with::<ImguiDx11Hooks>(Overlay).build().apply() {
+        log(&format!("imgui: {} loaded, hooking Present", if dx12 { "d3d12.dll" } else { "d3d11.dll" }));
+        let hooks = Hudhook::builder();
+        let hooks = if dx12 { hooks.with::<ImguiDx12Hooks>(Overlay) } else { hooks.with::<ImguiDx11Hooks>(Overlay) };
+        match hooks.build().apply() {
             Ok(()) => log("imgui: overlay hooked (F9)"),
             Err(e) => log(&format!("imgui: overlay hook FAILED: {e:?}")),
         }
