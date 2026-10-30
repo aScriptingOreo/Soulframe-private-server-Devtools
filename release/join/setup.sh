@@ -37,12 +37,12 @@ ip=$(getent ahostsv4 "$server" | awk 'NR == 1 { print $1 }')
 . /etc/os-release
 case " $ID ${ID_LIKE:-} " in
   *" arch "*)
-    pacman -S --needed --noconfirm wine curl nftables xorg-xhost libpulse acl ||
+    pacman -S --needed --noconfirm wine curl nftables xorg-xhost libpulse acl python ||
       { echo "pacman failed. Wine is in [multilib]: enable it in /etc/pacman.conf, then run setup.sh again."; exit 1; } ;;
   *" debian "* | *" ubuntu "*)
     dpkg --add-architecture i386
     apt-get update
-    apt-get install -y wine64 wine32:i386 curl nftables x11-xserver-utils pulseaudio-utils acl ;;
+    apt-get install -y wine64 wine32:i386 curl nftables x11-xserver-utils pulseaudio-utils acl python3 ;;
   *)
     echo "Unknown distro '$ID'. Install wine, curl, nftables, xhost and pactl yourself, then set SF_SKIP_PACKAGES=1."
     [[ ${SF_SKIP_PACKAGES:-} ]] || exit 1 ;;
@@ -103,6 +103,31 @@ if [[ $(cat "$home/.wine/.sf-ready" 2>/dev/null) != "dxvk $dxvk" ]]; then
   as_user wineserver -w
   rm -rf "$tmp"
   echo "dxvk $dxvk" | as_user tee "$home/.wine/.sf-ready" >/dev/null
+fi
+
+# Proton from your Steam, if there is one: sf-play prefers it to the Wine above (SF_RUNNER=wine sf-play skips it).
+# Steam itself can't run the copy: it runs games as you, and only sfplay is firewalled. Copied, not used in place:
+# sfplay can't read your home, and Proton unpacks itself into its own folder on first run.
+pick() { printf '%s\n' "$@" | sort -V | tail -n1; }  # newest; GE-Proton10-1 after GE-Proton9-27
+shopt -s nullglob
+proton=
+for steam in "$myhome/.local/share/Steam" "$myhome/.var/app/com.valvesoftware.Steam/.local/share/Steam"; do
+  [[ $proton ]] || proton=$(pick "$steam"/compatibilitytools.d/GE-Proton*/proton)
+  [[ $proton ]] || proton=$(pick "$steam"/steamapps/common/Proton\ [0-9]*/proton)
+  [[ $proton ]] || proton=$(pick "$steam"/steamapps/common/Proton\ -\ Experimental/proton)
+done
+shopt -u nullglob
+if [[ $proton ]]; then
+  pdir=$(dirname "$proton")
+  if [[ $(cat "$home/proton/version" 2>/dev/null) != "$(cat "$pdir/version" 2>/dev/null)" || ! -f $home/proton/proton ]]; then
+    echo "Copying $(basename "$pdir") to $home/proton for sf-play (about 1 GB)..."
+    rm -rf "$home/proton"
+    cp -a "$pdir" "$home/proton"
+  fi
+  install -d -o "$user" "$home/proton-data"  # STEAM_COMPAT_DATA_PATH: Proton's own prefix
+  chown -R "$user:" "$home/proton"
+else
+  echo "No Proton found in your Steam; sf-play uses Wine."
 fi
 
 # Everything user sfplay sends goes to loopback or the host, or is rejected. Loaded at every boot.

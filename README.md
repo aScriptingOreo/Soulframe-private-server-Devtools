@@ -13,7 +13,10 @@ Soulframe folder (any copy of build P16H6 with `Soulframe.x64.exe`; nothing is d
 click **Set up private copy** once, then **Play** (it starts the server too). Windows: tick **Dev tools** for the
 spawn / god mode / time-of-day window (the same panel is on F9 in game). Saves live in
 `%LOCALAPPDATA%\SoulframePrivateServer\data` / `~/.local/share/soulframe-private-server/data`.
-On Linux, setup installs Wine itself (Arch: enable `[multilib]` first); the AppImage may need `fuse2`.
+On Linux, setup installs Wine itself (Arch: enable `[multilib]` first); the AppImage may need `fuse2`. If your Steam
+has Proton (GE-Proton preferred), setup copies the newest one for the game's sandbox user and Play uses it
+(`SF_RUNNER=wine sf-play` for plain Wine). Adding the copy to Steam won't work: Steam runs it as you, outside the
+firewall rule, and `sf-launch.exe` refuses to start then.
 
 Build them: `powershell -ExecutionPolicy Bypass -File build.ps1` on Windows, `bash build.sh` on Linux (after
 `setup.cmd` / `setup.sh` once, for the toolchains). Output goes to `dist/`. From a clone without building:

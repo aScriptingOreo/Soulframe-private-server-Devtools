@@ -10,5 +10,12 @@ pactl list modules short | grep -q module-native-protocol-tcp ||
   pactl load-module module-native-protocol-tcp port=4713 auth-ip-acl=127.0.0.1 auth-anonymous=1 >/dev/null ||
   echo "No sound: pactl could not share your audio."
 cd /  # sfplay may not be able to read your current folder; Wine warns "could not find DOS drive" then
-exec sudo -u sfplay env HOME=/home/sfplay WINEPREFIX=/home/sfplay/.wine WINEDEBUG=-all DISPLAY="${DISPLAY:?no display}" \
-  PULSE_SERVER=tcp:127.0.0.1:4713 wine /home/sfplay/SoulframePrivate/sf-launch.exe
+exe=/home/sfplay/SoulframePrivate/sf-launch.exe  # setup.sh puts the copy's real place here
+run=(sudo -u sfplay env HOME=/home/sfplay DISPLAY="${DISPLAY:?no display}" PULSE_SERVER=tcp:127.0.0.1:4713)
+# Proton (copied from your Steam by setup.sh) when there is one, outside Steam; SF_RUNNER=wine for the system Wine.
+if [[ ${SF_RUNNER:-} != wine ]] && sudo -u sfplay test -f /home/sfplay/proton/proton; then
+  echo "Starting with Proton ($(sudo -u sfplay cat /home/sfplay/proton/version 2>/dev/null))"
+  exec "${run[@]}" STEAM_COMPAT_DATA_PATH=/home/sfplay/proton-data STEAM_COMPAT_CLIENT_INSTALL_PATH=/home/sfplay \
+    python3 /home/sfplay/proton/proton run "$exe"
+fi
+exec "${run[@]}" WINEPREFIX=/home/sfplay/.wine WINEDEBUG=-all wine "$exe"
