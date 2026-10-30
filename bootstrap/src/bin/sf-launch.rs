@@ -18,9 +18,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 const CREATE_SUSPENDED: u32 = 0x4;
-// The same flags the official launcher uses (EE.log), as tools\play.ps1 does.
-const GAME_ARGS: [&str; 6] =
-    ["-windowMode:2", "-shaderCache:1", "-graphicsDriver:dx11", "-gpuPreference:2", "-cluster:public", "-language:en"];
+// The same flags the official launcher uses (EE.log), as tools\play.ps1 does; -graphicsDriver comes from driver().
+const GAME_ARGS: [&str; 5] = ["-windowMode:2", "-shaderCache:1", "-gpuPreference:2", "-cluster:public", "-language:en"];
 const HOOK_TIMEOUT_MS: u32 = 30_000;
 
 #[link(name = "kernel32")]
@@ -92,8 +91,11 @@ fn run() -> Result<(), String> {
     std::fs::create_dir_all(local.join("Soulframe")).map_err(|e| format!("{}: {e}", appdata.display()))?;
     std::fs::create_dir_all(&roaming).map_err(|e| format!("{}: {e}", appdata.display()))?;
 
+    let driver = driver(game_dir);
+    println!("graphics: {driver} (the API this copy's cache was last used with)");
     let mut child = Command::new(&exe)
         .args(GAME_ARGS)
+        .arg(format!("-graphicsDriver:{driver}"))
         .args(args)
         .current_dir(game_dir) // the game logs and may resolve paths from its working directory
         .env("LOCALAPPDATA", &local)
@@ -109,6 +111,41 @@ fn run() -> Result<(), String> {
     }
     println!("started {} (AppData in {})", exe.display(), appdata.display());
     Ok(())
+}
+
+/// dx11 or dx12: whichever the copy's cache was last used with. The game keeps the per-API cache manifest it last
+/// downloaded (B.Cache.Dx11.bin / B.Cache.Dx12.bin) in Cache.Windows\H.Misc; with the other API's, stale one, it asks
+/// the server for a newer one, which ours doesn't have, and waits there. The F9 overlay (imgui.rs) hooks D3D11 only.
+fn driver(game_dir: &Path) -> &'static str {
+    let toc = std::fs::read(game_dir.join("Cache.Windows").join("H.Misc.toc")).unwrap_or_default();
+    if newest(&toc, b"B.Cache.Dx12.bin") > newest(&toc, b"B.Cache.Dx11.bin") { "dx12" } else { "dx11" }
+}
+
+/// The newest timestamp of a file entry in a *.toc (8-byte header, then 96-byte records: offset, timestamp, sizes,
+/// parent, 64-byte name; see soulframe-cache toc.rs), or 0.
+fn newest(toc: &[u8], name: &[u8]) -> u64 {
+    toc.get(8..).unwrap_or_default().chunks_exact(96)
+        .filter(|e| e[32..].starts_with(name) && e[32 + name.len()] == 0)
+        .map(|e| u64::from_le_bytes(e[8..16].try_into().unwrap()))
+        .max()
+        .unwrap_or(0)
+}
+
+#[test]
+fn picks_the_api_last_used() {
+    let entry = |ts: u64, name: &[u8]| {
+        let mut e = [0u8; 96];
+        e[8..16].copy_from_slice(&ts.to_le_bytes());
+        e[32..32 + name.len()].copy_from_slice(name);
+        e
+    };
+    let toc = |entries: &[[u8; 96]]| [&[0x4e, 0xc6, 0x67, 0x18, 0, 0, 0, 0][..], &entries.concat()].concat();
+    let dx12_newer = toc(&[entry(5, b"B.Cache.Dx11.bin"), entry(9, b"B.Cache.Dx12.bin"), entry(7, b"B.Cache.Dx11.bin")]);
+    assert_eq!(newest(&dx12_newer, b"B.Cache.Dx11.bin"), 7);
+    assert!(newest(&dx12_newer, b"B.Cache.Dx12.bin") > newest(&dx12_newer, b"B.Cache.Dx11.bin"));
+    let dx11_newer = toc(&[entry(9, b"B.Cache.Dx11.bin"), entry(5, b"B.Cache.Dx12.bin"), entry(1, b"B.Cache.Dx12.bin.x")]);
+    assert!(newest(&dx11_newer, b"B.Cache.Dx12.bin") < newest(&dx11_newer, b"B.Cache.Dx11.bin"));
+    assert_eq!(newest(&[], b"B.Cache.Dx11.bin"), 0);
 }
 
 /// The copy must have an enabled outbound block rule (tools\isolate-build.ps1 -Path, as admin), the same check as

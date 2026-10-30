@@ -371,7 +371,7 @@ unsafe extern "system" fn hook_clip_cursor(rect: *const c_void) -> i32 {
     original(if VISIBLE.load(Relaxed) { std::ptr::null() } else { rect })
 }
 
-/// Hook Present once the game has loaded D3D11 (it runs -graphicsDriver:dx11). Own thread: hudhook builds a dummy
+/// Hook Present once the game has loaded D3D11 (when sf-launch picked -graphicsDriver:dx11; under dx12, no overlay). Own thread: hudhook builds a dummy
 /// device to find the vtable, which must not hold up sf-launch's start signal.
 pub(crate) fn start_overlay() {
     std::thread::spawn(|| unsafe {
