@@ -8,6 +8,7 @@
 #        sudo rm /etc/sf-copy.nft /etc/systemd/system/sf-copy-firewall.service /usr/local/bin/sf-play \
 #          /etc/sysctl.d/60-sf-server.conf /etc/sudoers.d/sf-play
 #        and delete the copy's SoulframePrivate folder if you put it somewhere else
+#        (and sudo setfacl -x u:sfplay on the folders above it)
 set -euo pipefail
 P16H6=3be7694b589a7e2ae92a53b3e26ed8c3bcfac8c34ff25d69045df374b35e4765  # Soulframe.x64.exe, build 2026.10.08.15.20
 [[ $EUID -eq 0 ]] || exec sudo bash "$0" "$@"
@@ -36,12 +37,12 @@ ip=$(getent ahostsv4 "$server" | awk 'NR == 1 { print $1 }')
 . /etc/os-release
 case " $ID ${ID_LIKE:-} " in
   *" arch "*)
-    pacman -S --needed --noconfirm wine curl nftables xorg-xhost libpulse ||
+    pacman -S --needed --noconfirm wine curl nftables xorg-xhost libpulse acl ||
       { echo "pacman failed. Wine is in [multilib]: enable it in /etc/pacman.conf, then run setup.sh again."; exit 1; } ;;
   *" debian "* | *" ubuntu "*)
     dpkg --add-architecture i386
     apt-get update
-    apt-get install -y wine64 wine32:i386 curl nftables x11-xserver-utils pulseaudio-utils ;;
+    apt-get install -y wine64 wine32:i386 curl nftables x11-xserver-utils pulseaudio-utils acl ;;
   *)
     echo "Unknown distro '$ID'. Install wine, curl, nftables, xhost and pactl yourself, then set SF_SKIP_PACKAGES=1."
     [[ ${SF_SKIP_PACKAGES:-} ]] || exit 1 ;;
@@ -76,8 +77,15 @@ echo "$ip" > "$dest/sf-server.txt"
 chown -R "$user:" "$home"
 chown -R "$user:$(id -gn "$me")" "$dest"
 chmod -R g+rwX "$dest"
+# sfplay has to get through every folder above the copy, and home folders are usually 700. An ACL lets just sfplay
+# pass through (search, not list or read), instead of chmod o+x for everyone.
+parents=() d=$dest
+while d=$(dirname "$d"); [[ $d != / ]]; do parents=("$d" "${parents[@]}"); done  # top down
+for d in "${parents[@]}"; do
+  as_user test -x "$d" || setfacl -m "u:$user:x" "$d" 2>/dev/null || true
+done
 as_user test -w "$dest/Soulframe.x64.exe" ||
-  { echo "$user can't reach $dest: every folder above it needs o+x (e.g. chmod o+x on your home folder), or pick another place."; exit 1; }
+  { echo "$user can't reach $dest (no ACL support on this filesystem?). Pick another place, or chmod o+x the folders above it."; exit 1; }
 
 # Wine prefix with DXVK (the game is DirectX 11). DXVK is pinned and checked here: winetricks reads the latest version
 # from the GitHub API and builds a broken URL (.../download/v/dxvk-.tar.gz) when that answer doesn't parse.
