@@ -9,7 +9,7 @@ Bundled (.exe / .AppImage): the server's files are copied out of the read-only b
 """
 import hashlib, json, os, pathlib, queue, runpy, shutil, subprocess, sys, threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 # The server is run from source (runpy), so PyInstaller can't see what it imports: name it here.
 import datetime, gzip, hmac, http.client, http.server, math, random, re, secrets, socket, ssl, struct, tempfile, time  # noqa: F401
 import urllib.parse, zlib, collections, functools, ctypes, glob  # noqa: F401
@@ -75,8 +75,13 @@ def game_build(folder: str) -> str:
 
 
 def is_set_up(copy: pathlib.Path) -> bool:
-    # Linux: sf-play (from setup.sh) knows where the copy is, and the default one under /home/sfplay isn't readable by us.
-    return (copy / 'sf-launch.exe').is_file() if WINDOWS else bool(shutil.which('sf-play'))
+    if WINDOWS:
+        return (copy / 'sf-launch.exe').is_file()
+    # Linux: the copy under /home/sfplay isn't readable by us, but sf-play (setup.sh) names the copy it starts.
+    try:
+        return f'{copy}/sf-launch.exe' in pathlib.Path('/usr/local/bin/sf-play').read_text()
+    except OSError:
+        return False
 
 
 class App(tk.Tk):
@@ -194,10 +199,14 @@ class App(tk.Tk):
             subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(JOIN / 'setup.ps1'),
                               '-Source', folder, '-Dest', str(copy)])
             self.say('Setup is running in its own window (accept the admin prompt). Click Play when it says Done.')
-        else:  # pkexec shows a password prompt; setup.sh expects SUDO_USER from sudo
-            proc = subprocess.Popen(['pkexec', '/usr/bin/env', f'SUDO_USER={os.environ.get("USER", "")}', 'bash', str(JOIN / 'setup.sh'),
-                                     folder, str(copy)],
-                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, text=True, env=ENV)
+        else:  # our own prompt + sudo -S: pkexec needs a polkit agent, which many Arch desktops (tiling WMs) don't run
+            password = simpledialog.askstring('Set up', 'Your password (setup runs with sudo):', show='*', parent=self)
+            if password is None:
+                return
+            proc = subprocess.Popen(['sudo', '-S', '-k', '-p', '', 'bash', str(JOIN / 'setup.sh'), folder, str(copy)],
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.PIPE, text=True, env=ENV)
+            proc.stdin.write(password + '\n')
+            proc.stdin.close()
             self.stream(proc, 'setup: ')
 
     def toggle_server(self):
@@ -213,7 +222,7 @@ class App(tk.Tk):
     def play(self):
         copy = self.copy_dir()
         if not is_set_up(copy):
-            return messagebox.showerror('Play', 'Set up the private copy first (button 1).')
+            return messagebox.showerror('Play', f'No private copy set up in {copy} yet: click 1. Set up private copy.')
         if not (self.server and self.server.poll() is None):
             self.toggle_server()
         # sf-launch.exe opens its own console if something is wrong; sf-play (Linux) prints to our log.
