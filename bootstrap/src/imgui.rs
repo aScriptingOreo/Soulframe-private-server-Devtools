@@ -381,7 +381,9 @@ pub(crate) fn start_overlay() {
         }
         hook_input(); // before the game sets up its devices, so SetCooperativeLevel is seen
         // By the flag, not by which DLL shows up: a D3D12 game (and vkd3d-proton under Proton) may load d3d11.dll too.
-        let dx12 = std::env::args().any(|a| a.eq_ignore_ascii_case("-graphicsDriver:dx12"));
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        log(&format!("imgui: game args {}", args.join(" ")));
+        let dx12 = args.iter().any(|a| a.eq_ignore_ascii_case("-graphicsDriver:dx12"));
         let dll = super::wide::<10>(if dx12 { "d3d12.dll" } else { "d3d11.dll" });
         while GetModuleHandleW(dll.as_ptr()).is_null() {
             std::thread::sleep(std::time::Duration::from_millis(200));
@@ -839,6 +841,7 @@ impl ImguiRenderLoop for Overlay {
         // box creates there sets off Sandboxie's Immediate Recovery prompt (box run 2026-10-30 13:19).
         let ini = std::env::var_os("LOCALAPPDATA").map(|d| std::path::Path::new(&d).join("Soulframe\\sf-imgui.ini"));
         ctx.set_ini_filename(ini);
+        log("imgui: first Present seen, overlay drawing"); // hooked but never this: the game presents elsewhere
     }
 
     fn before_render<'a>(&'a mut self, ctx: &mut Context, _render: &'a mut dyn RenderContext) {
