@@ -67,9 +67,11 @@ if [[ ! -f $dest/Soulframe.x64.exe ]]; then
   ! pgrep -if 'soulframe\.x64\.exe|soulframe.*launcher\.exe' >/dev/null || { echo "Close Soulframe and its launcher first."; exit 1; }
   [[ $(sha256sum "$src/Soulframe.x64.exe" | cut -d' ' -f1) == "$P16H6" ]] ||
     { echo "Your Soulframe is a different version than this server supports (P16H6, 2026.10.08). Nothing was changed."; exit 1; }
-  echo "Copying $src to $dest (about 13 GB, read-only on your real install)..."
+  echo "Copying $src to $dest (about 13 GB unless btrfs/XFS share it; read-only on your real install)..."
   mkdir -p "$dest"
-  cp -r "$src/." "$dest"
+  # Copy-on-write where the filesystem can (btrfs, XFS): no extra space and instant, and the game's writes to its
+  # caches still split off from your real install. Elsewhere a plain copy. Not symlinks: the game writes Cache.Windows.
+  cp -r --reflink=auto "$src/." "$dest"
 fi
 [[ $(sha256sum "$dest/Soulframe.x64.exe" | cut -d' ' -f1) == "$P16H6" ]] || { echo "$dest is not build P16H6."; exit 1; }
 cp "$bin/sf-launch.exe" "$bin/sf_bootstrap.dll" "$dest"
